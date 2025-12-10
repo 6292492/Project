@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib import animation
 
+# Setup seaborn theme for nicer formatting of figures
 sns.set_theme(style="whitegrid")
 
+# File path to dataset containing PK parameters for patients
 DATAFILE = "PK_sample.csv"
 
 
@@ -30,19 +32,23 @@ def compute_metrics(df, t):
     """
     Compute Cmax, Tmax, and AUC using the simulated concentration data.
     """
-    C_all = []
-    Cmax_list = []
-    Tmax_list = []
-    AUC_list = []
+    C_all = [] # list storing concentration curves for each patient
+    Cmax_list = [] # list storing max concentration values
+    Tmax_list = [] # list storing time of Cmax
+    AUC_list = [] # list storing area under concentration-time curve
 
+ # Loop over each row (patient) in DataFrame
     for i, row in df.iterrows():
+
+        # Calculate concentration curve for this patient
         C = concentration_curve(row["Dose"], row["Vd"], row["k"], t)
 
         C_all.append(C)
-        Cmax_list.append(np.max(C))
-        Tmax_list.append(t[np.argmax(C)])
-        AUC_list.append(np.trapezoid(C, t))
+        Cmax_list.append(np.max(C))  # highest concentration value
+        Tmax_list.append(t[np.argmax(C)])  # time at which Cmax occurs
+        AUC_list.append(np.trapezoid(C, t))  # numeric integration
 
+    # Store new results in DataFrame
     df["C_curve"] = C_all
     df["Cmax"] = Cmax_list
     df["Tmax"] = Tmax_list
@@ -53,6 +59,7 @@ def compute_metrics(df, t):
 def create_plots(df):
     """Generate PNG figures"""
 
+    # Create a standard time vector for plotting
     t = np.linspace(0, 20, 200)
 
     # 1 — Concentration curves
@@ -97,11 +104,14 @@ def make_animation(df, t):
     """Animate concentration vs time"""
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    lines = []
+    lines = [] # list storing animated line objects
+
+    # Create empty plot line for each patient
     for i, row in df.iterrows():
         (line,) = ax.plot([], [], label=f"Patient {row['PatientID']}")
         lines.append(line)
 
+    # Set plot limits based on data range
     ax.set_xlim(0, max(t))
     ax.set_ylim(0, max(df["Cmax"]) + 2)
     ax.set_xlabel("Time (h)")
@@ -109,12 +119,14 @@ def make_animation(df, t):
     ax.set_title("Time: 0.00 h")
     ax.legend()
 
+    # Update animation frame by frame
     def update(frame):
         for i, row in df.iterrows():
             lines[i].set_data(t[:frame], row["C_curve"][:frame])
         ax.set_title(f"Time: {t[frame]:.2f} h")
         return lines
 
+    # Run animation and save as GIF
     ani = animation.FuncAnimation(fig, update, frames=len(t), interval=80)
     ani.save("pk_animation.gif", writer="pillow")
     plt.close()
@@ -123,9 +135,11 @@ def make_animation(df, t):
 def export_outputs(df):
     """Export PK summary tables"""
 
+    # Save full PK summary table
     df_summary = df[["PatientID", "Dose", "Vd", "k", "Cmax", "Tmax", "AUC"]]
     df_summary.to_csv("pk_summary.csv", index=False)
 
+    # Save AUC only table (one metric of interest)
     df_auc = df[["PatientID", "AUC"]]
     df_auc.to_csv("patient_auc.csv", index=False)
 
