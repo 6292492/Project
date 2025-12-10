@@ -1,0 +1,128 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from matplotlib import animation
+
+sns.set_theme(style="whitegrid")
+
+DATAFILE = r'PK_sample.csv'
+
+def load_params(path):
+    df = pd.read_csv(path)
+    return df
+
+def concentration_curve(dose, vd, k, t):
+    C = (dose / vd) * np.exp(-k * t)
+    return C
+
+def compute_metrics(df, t):
+    df["Cmax"] = 0.0
+    df["Tmax"] = 0.0
+    df["AUC"] = 0.0
+    
+    for idx, row in df.iterrows():
+        C = concentration_curve(row['Dose'], row['Vd'], row['k'], t)
+        df.at[idx, "Cmax"] = np.max(C)
+        df.at[idx, "Tmax"] = t[np.argmax(C)]
+        df.at[idx, "AUC"] = np.trapz(C, t)
+    
+    return df
+
+def create_plots(df, t):
+    # concentration curves
+    conc_list = []
+    for idx, row in df.iterrows():
+        C = concentration_curve(row['Dose'], row['Vd'], row['k'], t)
+        for i in range(len(t)):
+            conc_list.append({
+                'Time': t[i],
+                'Concentration': C[i],
+                'PatientID': row['PatientID']
+            })
+    conc_df = pd.DataFrame(conc_list)
+    
+    plt.figure(figsize=(8,4))
+    sns.lineplot(data=conc_df, x="Time", y="Concentration", hue="PatientID")
+    plt.title("Concentration-time curves")
+    plt.savefig(r'concentration_curves.png')
+    plt.close()
+
+    # cmax histogram with KDE
+    plt.figure(figsize=(8,4))
+    sns.histplot(data=df, x="Cmax", kde=True, bins=5)
+    plt.title("Cmax Distribution")
+    plt.savefig(r'cmax_hist.png')
+    plt.close()
+
+    # dose vs cmax scatter
+    plt.figure(figsize=(6,4))
+    sns.scatterplot(data=df, x="Dose", y="Cmax", hue="PatientID", s=100)
+    plt.title("Dose vs Cmax")
+    plt.savefig(r'dose_vs_cmax.png')
+    plt.close()
+
+    # auc boxplot
+    plt.figure(figsize=(7,5))
+    sns.boxplot(data=df, y="AUC")
+    plt.title("AUC Boxplot")
+    plt.savefig(r'auc_boxplot.png')
+    plt.close()
+
+def make_animation(df, t):
+    fig, ax = plt.subplots(figsize=(10,6))
+    
+    max_conc = 0
+    for idx, row in df.iterrows():
+        C = concentration_curve(row['Dose'], row['Vd'], row['k'], t)
+        if np.max(C) > max_conc:
+            max_conc = np.max(C)
+    
+    ax.set_xlim(0, np.max(t))
+    ax.set_ylim(0, max_conc + 5)
+    
+    lines = []
+    for idx, row in df.iterrows():
+        line, = ax.plot([], [], label=f"Patient {row['PatientID']}")
+        lines.append(line)
+    
+    ax.legend()
+
+    def animate(i):
+        current_t = t[:i]
+        for line_idx, row in df.iterrows():
+            C = concentration_curve(row['Dose'], row['Vd'], row['k'], current_t)
+            lines[line_idx].set_data(current_t, C)
+        ax.set_title(f"Time: {t[i]:.2f} h")
+        return lines,
+
+    anim = animation.FuncAnimation(
+        fig, animate, frames=len(t), interval=250
+    )
+    anim.save(r'pk_animation.gif', writer="pillow")
+    plt.close()
+
+def export_summary(df, t):
+    summary_df = df[['PatientID', 'Cmax', 'Tmax', 'AUC']]
+    summary_df.to_csv(r'pk_summary.csv', index=False)
+    
+    conc_data = {}
+    for idx, row in df.iterrows():
+        C = concentration_curve(row['Dose'], row['Vd'], row['k'], t)
+        conc_data[row['PatientID']] = C
+    
+    conc_df = pd.DataFrame(conc_data, index=t).T
+    conc_df.to_csv(r'patient_auc.csv')
+
+if __name__ == "__main__":
+    t = np.linspace(0, 20, 200)
+    
+    df = load_params(DATAFILE)
+    df = compute_metrics(df, t)
+    create_plots(df, t)
+    make_animation(df, t)
+    export_summary(df, t)
+
+    print("Project 7 completed successfully!")
+
+    
